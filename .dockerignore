@@ -1,0 +1,10 @@
+data/
+uploads/
+exports/
+storage/
+*.sqlite
+*.sqlite3
+.git
+.gitignore
+*.log
+node_modules/

@@ -1,0 +1,300 @@
+/* public/css/style.css - OpusFlow AI Modern Dark SaaS Stylesheet */
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --bg-main: #090A0F;
+  --bg-card: #121520;
+  --bg-surface: #181C2B;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(139, 92, 246, 0.5);
+  --accent-purple: #8B5CF6;
+  --accent-indigo: #6366F1;
+  --accent-fuchsia: #D946EF;
+  --accent-emerald: #10B981;
+  --accent-amber: #F59E0B;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-main);
+  color: #F1F5F9;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(18, 21, 32, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
+}
+
+/* Active Nav Link */
+.nav-item.active {
+  background: rgba(139, 92, 246, 0.15);
+  color: #DDD6FE;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+/* Glassmorphism Cards */
+.glass-card {
+  background: rgba(18, 21, 32, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 12px 30px -10px rgba(139, 92, 246, 0.15);
+}
+
+/* Viral Score Badges */
+.score-badge-viral {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+}
+
+.score-badge-high {
+  background: rgba(139, 92, 246, 0.15);
+  color: #A78BFA;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.2);
+}
+
+.score-badge-medium {
+  background: rgba(245, 158, 11, 0.15);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+}
+
+/* Category Badges */
+.cat-badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+}
+.cat-hook { background: rgba(236, 72, 153, 0.15); color: #F472B6; border: 1px solid rgba(236, 72, 153, 0.3); }
+.cat-story { background: rgba(59, 130, 246, 0.15); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.3); }
+.cat-controversy { background: rgba(239, 68, 68, 0.15); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+.cat-insight { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.cat-emotional { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+/* Aspect Ratio Containers in Editor */
+.aspect-container-9-16 {
+  width: 320px;
+  height: 568px;
+  max-height: 80vh;
+}
+.aspect-container-1-1 {
+  width: 440px;
+  height: 440px;
+  max-height: 80vh;
+}
+.aspect-container-16-9 {
+  width: 620px;
+  height: 348px;
+  max-height: 80vh;
+}
+
+/* Video Canvas Overlay */
+.video-canvas-wrapper {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  background: #000;
+}
+
+/* Dynamic Animated Subtitle Styles (OpusClip Karaoke Presets) */
+
+/* 1. Preset: Viral */
+.caption-preset-viral {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #FFF;
+  text-shadow: 
+    -2px -2px 0 #000, 2px -2px 0 #000,
+    -2px 2px 0 #000, 2px 2px 0 #000,
+    0 4px 8px rgba(0, 0, 0, 0.8);
+  letter-spacing: -0.02em;
+}
+.caption-preset-viral .active-word {
+  color: #FACC15 !important;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 0 0.3rem;
+  border-radius: 0.35rem;
+  transform: scale(1.15);
+  display: inline-block;
+  text-shadow: 0 0 15px rgba(250, 204, 21, 0.8);
+  transition: transform 0.1s ease-out;
+}
+
+/* 2. Preset: Bold */
+.caption-preset-bold {
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #FFFFFF;
+  text-shadow: 0 4px 0 #000000, 0 8px 15px rgba(0, 0, 0, 0.9);
+}
+.caption-preset-bold .active-word {
+  color: #A855F7 !important;
+  transform: scale(1.1);
+  display: inline-block;
+  text-shadow: 0 0 20px rgba(168, 85, 247, 0.9);
+}
+
+/* 3. Preset: Minimal */
+.caption-preset-minimal {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  color: #E2E8F0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(8px);
+  padding: 0.4rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.caption-preset-minimal .active-word {
+  color: #FFFFFF !important;
+  font-weight: 800;
+  border-bottom: 2px solid #8B5CF6;
+}
+
+/* 4. Preset: Podcast */
+.caption-preset-podcast {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  color: #FEF3C7;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+.caption-preset-podcast .active-word {
+  color: #F59E0B !important;
+  background: rgba(245, 158, 11, 0.2);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.35rem;
+}
+
+/* 5. Preset: Highlight */
+.caption-preset-highlight {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  color: #E0E7FF;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+}
+.caption-preset-highlight .active-word {
+  background: linear-gradient(135deg, #06B6D4, #8B5CF6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transform: scale(1.12);
+  display: inline-block;
+  filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.6));
+}
+
+/* Interactive Timeline Styles */
+.timeline-track {
+  height: 48px;
+  background: #0B0E17;
+  border-radius: 0.6rem;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.timeline-wave {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 10px;
+  opacity: 0.4;
+}
+.timeline-bar {
+  flex: 1;
+  background: #6366F1;
+  border-radius: 9999px;
+}
+.timeline-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(139, 92, 246, 0.25);
+  border-left: 3px solid #8B5CF6;
+  border-right: 3px solid #8B5CF6;
+  cursor: grab;
+}
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #EF4444;
+  z-index: 10;
+  pointer-events: none;
+}
+.timeline-playhead::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -5px;
+  width: 12px;
+  height: 12px;
+  background: #EF4444;
+  border-radius: 9999px;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+}
+
+/* Toast Notifications */
+.toast-item {
+  pointer-events: auto;
+  min-width: 280px;
+  background: rgba(18, 21, 32, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  animation: slideInToast 0.25s ease-out forwards;
+}
+
+@keyframes slideInToast {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Utility Animations */
+.animate-pulse-glow {
+  animation: pulseGlow 2s infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 15px rgba(139, 92, 246, 0.3); }
+  50% { box-shadow: 0 0 25px rgba(139, 92, 246, 0.6); }
+}

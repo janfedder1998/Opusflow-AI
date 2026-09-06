@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: opusflow-ai
+    runtime: docker
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: STORAGE_DIR
+        value: /app/storage
+    disk:
+      name: opusflow-storage
+      mountPath: /app/storage
+      sizeGB: 1

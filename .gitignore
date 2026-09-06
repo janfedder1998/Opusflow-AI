@@ -1,0 +1,8 @@
+data/
+uploads/
+exports/
+storage/
+*.sqlite
+*.sqlite3
+.DS_Store
+Gemfile.lock
