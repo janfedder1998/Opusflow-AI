@@ -308,12 +308,21 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
 
     when %r{^projects/([^/]+)/analyze$}
       proj_id = $1
+      puts "[ANALYZE] Route hit for project #{proj_id}"
       project = db.get_first_row("SELECT * FROM projects WHERE id = ?", [proj_id])
       return error_response(res, 404, "Projekt nicht gefunden") unless project
+      puts "[ANALYZE] Project found, starting background thread"
 
       # Start async pipeline thread
       Thread.new do
-        run_analysis_pipeline(proj_id, data)
+        puts "[ANALYZE] Background thread started for #{proj_id}"
+        begin
+          run_analysis_pipeline(proj_id, data)
+        rescue => thread_err
+          puts "[ANALYZE] FATAL thread error: #{thread_err.class}: #{thread_err.message}"
+          puts thread_err.backtrace.first(10).join("\n")
+        end
+        puts "[ANALYZE] Background thread finished for #{proj_id}"
       end
 
       json_response(res, { success: true, message: 'Analyse gestartet' })
@@ -454,6 +463,7 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
   private
 
   def run_analysis_pipeline(proj_id, options)
+    puts "[PIPELINE] run_analysis_pipeline entered for #{proj_id}"
     db = OpusFlow::Database.instance.db
     
     # 6-Step pipeline as requested:
@@ -474,6 +484,7 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
     ]
 
     db.execute("UPDATE projects SET status = 'analyzing', progress = 5, current_step = 'Analyse gestartet' WHERE id = ?", [proj_id])
+    puts "[PIPELINE] Initial status update done for #{proj_id}"
 
     steps.each do |st|
       sleep(st[:delay])
