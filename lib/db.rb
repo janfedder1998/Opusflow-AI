@@ -3,8 +3,31 @@ require 'sqlite3'
 require 'fileutils'
 require 'json'
 require 'securerandom'
+require 'thread'
 
 module OpusFlow
+  # The sqlite3 gem is explicitly NOT thread-safe when a single connection
+  # object is shared across multiple Ruby threads. This app does exactly
+  # that (WEBrick handles each HTTP request in its own thread, and the
+  # background analysis pipeline runs in its own Thread), which can cause
+  # a silent, unrecoverable low-level deadlock with no Ruby exception and
+  # no log output. This wrapper serializes every call through a Mutex so
+  # only one thread ever touches the underlying connection at a time.
+  class SafeDatabase
+    def initialize(raw_db)
+      @raw_db = raw_db
+      @mutex = Mutex.new
+    end
+
+    def method_missing(name, *args, **kwargs, &block)
+      @mutex.synchronize { @raw_db.send(name, *args, **kwargs, &block) }
+    end
+
+    def respond_to_missing?(name, include_private = false)
+      @raw_db.respond_to?(name, include_private) || super
+    end
+  end
+
   class Database
     STORAGE_ROOT = ENV['STORAGE_DIR'] || File.expand_path('../..', __FILE__)
     DB_PATH = File.join(STORAGE_ROOT, 'data', 'opusflow.sqlite')
@@ -15,8 +38,10 @@ module OpusFlow
 
     def initialize
       FileUtils.mkdir_p(File.dirname(DB_PATH))
-      @db = SQLite3::Database.new(DB_PATH)
-      @db.results_as_hash = true
+      raw_db = SQLite3::Database.new(DB_PATH)
+      raw_db.results_as_hash = true
+      raw_db.busy_timeout = 5000
+      @db = SafeDatabase.new(raw_db)
       init_schema
     end
 
