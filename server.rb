@@ -132,6 +132,7 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
     when %r{^projects/([^/]+)/status$}
       proj_id = $1
       row = db.get_first_row("SELECT id, status, progress, current_step FROM projects WHERE id = ?", [proj_id])
+      puts "[STATUS] Lookup for id=#{proj_id.inspect} -> #{row.inspect}"
       if row
         json_response(res, row)
       else
@@ -299,10 +300,13 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
       file_path = data['file_path'] || ''
 
       proj_id = "proj_#{SecureRandom.hex(6)}"
+      puts "[CREATE] Creating project with id=#{proj_id}"
       db.execute <<-SQL, [proj_id, title, source_type, source_url, file_path, thumbnail_url, duration, 'pending', 0, 'Bereit zur Analyse', (data['metadata'] || {}).to_json]
         INSERT INTO projects (id, title, source_type, source_url, file_path, thumbnail_url, duration, status, progress, current_step, metadata_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       SQL
+      verify = db.get_first_row("SELECT id FROM projects WHERE id = ?", [proj_id])
+      puts "[CREATE] Verify read-back: #{verify.inspect}"
 
       json_response(res, { id: proj_id, success: true, message: 'Projekt erfolgreich erstellt' }, 201)
 
