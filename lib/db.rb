@@ -6,28 +6,6 @@ require 'securerandom'
 require 'thread'
 
 module OpusFlow
-  # The sqlite3 gem is explicitly NOT thread-safe when a single connection
-  # object is shared across multiple Ruby threads. This app does exactly
-  # that (WEBrick handles each HTTP request in its own thread, and the
-  # background analysis pipeline runs in its own Thread), which can cause
-  # a silent, unrecoverable low-level deadlock with no Ruby exception and
-  # no log output. This wrapper serializes every call through a Mutex so
-  # only one thread ever touches the underlying connection at a time.
-  class SafeDatabase
-    def initialize(raw_db)
-      @raw_db = raw_db
-      @mutex = Mutex.new
-    end
-
-    def method_missing(name, *args, **kwargs, &block)
-      @mutex.synchronize { @raw_db.send(name, *args, **kwargs, &block) }
-    end
-
-    def respond_to_missing?(name, include_private = false)
-      @raw_db.respond_to?(name, include_private) || super
-    end
-  end
-
   class Database
     STORAGE_ROOT = ENV['STORAGE_DIR'] || File.expand_path('../..', __FILE__)
     DB_PATH = File.join(STORAGE_ROOT, 'data', 'opusflow.sqlite')
@@ -38,21 +16,34 @@ module OpusFlow
 
     def initialize
       FileUtils.mkdir_p(File.dirname(DB_PATH))
-      raw_db = SQLite3::Database.new(DB_PATH)
-      raw_db.results_as_hash = true
-      raw_db.busy_timeout = 5000
-      @db = SafeDatabase.new(raw_db)
       init_schema
     end
 
+    # The sqlite3 gem is explicitly NOT thread-safe when a single connection
+    # object is shared across multiple Ruby threads (WEBrick handles each
+    # HTTP request in its own thread, and the background analysis pipeline
+    # runs in its own Thread). Sharing one connection caused a real bug here:
+    # a write made on one thread's connection was not visible to a read on
+    # another thread's connection ("read-after-write" not propagating).
+    # The fix is the pattern SQLite itself recommends: each thread gets its
+    # own connection to the same file. Autocommit writes to the file are
+    # then immediately visible to any other connection that reads it.
     def db
-      @db
+      conn = Thread.current[:opusflow_db_connection]
+      return conn if conn
+
+      conn = SQLite3::Database.new(DB_PATH)
+      conn.results_as_hash = true
+      conn.busy_timeout = 5000
+      Thread.current[:opusflow_db_connection] = conn
+      conn
     end
 
     private
 
     def init_schema
-      @db.execute <<-SQL
+      c = db
+      c.execute <<-SQL
         CREATE TABLE IF NOT EXISTS projects (
           id TEXT PRIMARY KEY,
           title TEXT NOT NULL,
@@ -70,7 +61,7 @@ module OpusFlow
         );
       SQL
 
-      @db.execute <<-SQL
+      c.execute <<-SQL
         CREATE TABLE IF NOT EXISTS clips (
           id TEXT PRIMARY KEY,
           project_id TEXT NOT NULL,
@@ -91,7 +82,7 @@ module OpusFlow
         );
       SQL
 
-      @db.execute <<-SQL
+      c.execute <<-SQL
         CREATE TABLE IF NOT EXISTS settings (
           key TEXT PRIMARY KEY,
           value TEXT,
@@ -99,7 +90,7 @@ module OpusFlow
         );
       SQL
 
-      @db.execute <<-SQL
+      c.execute <<-SQL
         CREATE TABLE IF NOT EXISTS scheduled_posts (
           id TEXT PRIMARY KEY,
           clip_id TEXT NOT NULL,
@@ -113,7 +104,7 @@ module OpusFlow
         );
       SQL
 
-      @db.execute <<-SQL
+      c.execute <<-SQL
         CREATE TABLE IF NOT EXISTS team_members (
           id TEXT PRIMARY KEY,
           email TEXT NOT NULL,
@@ -137,7 +128,7 @@ module OpusFlow
       }
 
       default_settings.each do |k, v|
-        @db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", [k, v])
+        c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", [k, v])
       end
     end
   end
