@@ -1,4 +1,7 @@
 # server.rb
+$stdout.sync = true
+$stderr.sync = true
+
 require 'webrick'
 require 'json'
 require 'fileutils'
