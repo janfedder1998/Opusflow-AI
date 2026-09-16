@@ -6,6 +6,35 @@ require 'securerandom'
 require 'thread'
 
 module OpusFlow
+  # Belt-and-suspenders wrapper: serializes ALL access through one Mutex on
+  # ONE shared connection, and forces a WAL checkpoint after every call so
+  # writes are flushed straight into the main database file immediately.
+  # This removes every variable (thread-local connections, WAL visibility
+  # timing, cross-connection caching) that earlier, narrower fixes left in
+  # place and that turned out not to be sufficient on their own.
+  class SyncedDatabase
+    def initialize(raw_db)
+      @raw_db = raw_db
+      @mutex = Mutex.new
+    end
+
+    def method_missing(name, *args, **kwargs, &block)
+      @mutex.synchronize do
+        result = @raw_db.send(name, *args, **kwargs, &block)
+        begin
+          @raw_db.execute("PRAGMA wal_checkpoint(TRUNCATE)") if name == :execute
+        rescue
+          # never let a checkpoint failure break the actual call's result
+        end
+        result
+      end
+    end
+
+    def respond_to_missing?(name, include_private = false)
+      @raw_db.respond_to?(name, include_private) || super
+    end
+  end
+
   class Database
     STORAGE_ROOT = ENV['STORAGE_DIR'] || File.expand_path('../..', __FILE__)
     DB_PATH = File.join(STORAGE_ROOT, 'data', 'opusflow.sqlite')
@@ -16,29 +45,17 @@ module OpusFlow
 
     def initialize
       FileUtils.mkdir_p(File.dirname(DB_PATH))
+      raw = SQLite3::Database.new(DB_PATH)
+      raw.results_as_hash = true
+      raw.busy_timeout = 5000
+      raw.journal_mode = "WAL"
+      raw.synchronous = "FULL"
+      @db = SyncedDatabase.new(raw)
       init_schema
     end
 
-    # The sqlite3 gem is explicitly NOT thread-safe when a single connection
-    # object is shared across multiple Ruby threads (WEBrick handles each
-    # HTTP request in its own thread, and the background analysis pipeline
-    # runs in its own Thread). Sharing one connection caused a real bug here:
-    # a write made on one thread's connection was not visible to a read on
-    # another thread's connection ("read-after-write" not propagating).
-    # The fix is the pattern SQLite itself recommends: each thread gets its
-    # own connection to the same file. Autocommit writes to the file are
-    # then immediately visible to any other connection that reads it.
     def db
-      conn = Thread.current[:opusflow_db_connection]
-      return conn if conn
-
-      conn = SQLite3::Database.new(DB_PATH)
-      conn.results_as_hash = true
-      conn.busy_timeout = 5000
-      conn.journal_mode = "WAL"
-      conn.synchronous = "NORMAL"
-      Thread.current[:opusflow_db_connection] = conn
-      conn
+      @db
     end
 
     private
