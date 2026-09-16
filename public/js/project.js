@@ -346,12 +346,30 @@ const ProjectView = {
 };
 
 const ProjectsListView = {
+  async deleteProject(id, title) {
+    if (!confirm(`"${title}" und alle zugehörigen Clips unwiderruflich löschen?`)) return;
+    try {
+      await API.deleteProject(id);
+      API.showToast("Projekt gelöscht", "success");
+      Router.handleRoute();
+    } catch (err) {
+      API.showToast("Fehler beim Löschen: " + err.message, "error");
+    }
+  },
+
   async render() {
     try {
       const projects = await API.getProjects();
 
       const projectsGrid = (projects || []).map(p => `
-        <div onclick="window.location.hash = '#project/${p.id}'" class="glass-card flex flex-col justify-between overflow-hidden cursor-pointer group hover:-translate-y-1 transition-all duration-300 border border-white/[0.08]">
+        <div onclick="window.location.hash = '#project/${p.id}'" class="glass-card flex flex-col justify-between overflow-hidden cursor-pointer group hover:-translate-y-1 transition-all duration-300 border border-white/[0.08] relative">
+          <button
+            onclick="event.stopPropagation(); ProjectsListView.deleteProject('${p.id}', '${ProjectView.escapeHtml(p.title).replace(/'/g, "\\'")}')"
+            class="absolute top-2 right-2 z-20 w-7 h-7 rounded-full bg-black/70 hover:bg-red-500/90 text-white/80 hover:text-white flex items-center justify-center transition-all backdrop-blur"
+            title="Projekt löschen"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
           <div class="relative aspect-video bg-slate-900 overflow-hidden">
             <img src="${p.thumbnail_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80'}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
             <span class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/80 text-xs font-mono text-white">
