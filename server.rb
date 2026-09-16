@@ -135,7 +135,8 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
     when %r{^projects/([^/]+)/status$}
       proj_id = $1
       row = db.get_first_row("SELECT id, status, progress, current_step FROM projects WHERE id = ?", [proj_id])
-      puts "[STATUS] Lookup for id=#{proj_id.inspect} -> #{row.inspect}"
+      total_count = db.get_first_value("SELECT COUNT(*) FROM projects")
+      puts "[STATUS] Lookup for id=#{proj_id.inspect} pid=#{Process.pid} db_path=#{File.realpath(OpusFlow::Database::DB_PATH) rescue OpusFlow::Database::DB_PATH} total_projects=#{total_count} -> #{row.inspect}"
       if row
         json_response(res, row)
       else
@@ -303,7 +304,7 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
       file_path = data['file_path'] || ''
 
       proj_id = "proj_#{SecureRandom.hex(6)}"
-      puts "[CREATE] Creating project with id=#{proj_id}"
+      puts "[CREATE] Creating project with id=#{proj_id} pid=#{Process.pid} db_path=#{File.realpath(OpusFlow::Database::DB_PATH) rescue OpusFlow::Database::DB_PATH}"
       db.execute <<-SQL, [proj_id, title, source_type, source_url, file_path, thumbnail_url, duration, 'pending', 0, 'Bereit zur Analyse', (data['metadata'] || {}).to_json]
         INSERT INTO projects (id, title, source_type, source_url, file_path, thumbnail_url, duration, status, progress, current_step, metadata_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
