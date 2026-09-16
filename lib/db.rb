@@ -19,15 +19,7 @@ module OpusFlow
     end
 
     def method_missing(name, *args, **kwargs, &block)
-      @mutex.synchronize do
-        result = @raw_db.send(name, *args, **kwargs, &block)
-        begin
-          @raw_db.execute("PRAGMA wal_checkpoint(TRUNCATE)") if name == :execute
-        rescue
-          # never let a checkpoint failure break the actual call's result
-        end
-        result
-      end
+      @mutex.synchronize { @raw_db.send(name, *args, **kwargs, &block) }
     end
 
     def respond_to_missing?(name, include_private = false)
@@ -48,8 +40,10 @@ module OpusFlow
       raw = SQLite3::Database.new(DB_PATH)
       raw.results_as_hash = true
       raw.busy_timeout = 5000
-      raw.journal_mode = "WAL"
+      raw.journal_mode = "DELETE"
       raw.synchronous = "FULL"
+      actual_mode = raw.journal_mode rescue "unknown"
+      puts "[DB] Opened #{DB_PATH}, journal_mode=#{actual_mode}"
       @db = SyncedDatabase.new(raw)
       init_schema
     end
