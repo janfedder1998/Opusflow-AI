@@ -1224,101 +1224,31 @@ const EditorView = {
   async exportVideo() {
     const btn = document.getElementById('btn-export-clip');
     btn.disabled = true;
-    btn.innerHTML = `<span class="animate-spin text-sm">⏳</span> Rendere Video (MP4)...`;
+    btn.innerHTML = `<span class="animate-spin text-sm">⏳</span> Video wird geschnitten...`;
 
-    API.showToast("Export gestartet: MP4 wird mit gerenderten Untertiteln vorbereitet...", "info");
+    API.showToast("Export gestartet: echtes Video wird zugeschnitten...", "info");
 
     try {
       await this.saveChanges();
-      // Render canvas recording to genuine MP4 / WebM video file
-      await this.recordCanvasAndDownload();
-      API.showToast("Video erfolgreich heruntergeladen!", "success");
+      const result = await API.exportClip(this.currentClip.id);
+      this.triggerFileDownload(result.url, `OpusFlow_${(this.currentClip.title || 'Clip').replace(/[^a-zA-Z0-9_-]/g, '_')}.mp4`);
+      API.showToast("Video erfolgreich exportiert!", "success");
     } catch (err) {
       console.error("Export error:", err);
-      // Fallback: Trigger direct download
-      this.exportClipDirectly(this.currentClip, this.currentProject);
+      API.showToast("Export fehlgeschlagen: " + err.message, "error");
     } finally {
       btn.disabled = false;
       btn.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> Clip als MP4 exportieren`;
     }
   },
 
-  async recordCanvasAndDownload() {
-    const canvas = document.getElementById('preview-canvas');
-    if (!canvas) throw new Error("Canvas nicht gefunden");
-
-    // Capture canvas stream at 30 FPS
-    const stream = canvas.captureStream(30);
-
-    // Add audio if video element exists
-    const video = document.getElementById('source-video');
-    if (video && video.captureStream) {
-      const vStream = video.captureStream();
-      const audioTracks = vStream.getAudioTracks();
-      if (audioTracks.length > 0) {
-        stream.addTrack(audioTracks[0]);
-      }
-    }
-
-    const mimeTypes = [
-      'video/mp4;codecs=avc1',
-      'video/mp4',
-      'video/webm;codecs=vp9,opus',
-      'video/webm'
-    ];
-    let selectedMime = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
-
-    return new Promise((resolve, reject) => {
-      let recordedChunks = [];
-      const recorder = new MediaRecorder(stream, { mimeType: selectedMime });
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
-      };
-
-      recorder.onstop = () => {
-        const ext = selectedMime.includes('mp4') ? 'mp4' : 'webm';
-        const blob = new Blob(recordedChunks, { type: selectedMime });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const cleanTitle = (this.currentClip.title || 'Clip').replace(/[^a-zA-Z0-9_-]/g, '_');
-        a.href = url;
-        a.download = `OpusFlow_${cleanTitle}_${this.state.aspectRatio.replace(':', 'x')}.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 1000);
-        resolve();
-      };
-
-      recorder.onerror = (e) => reject(e);
-
-      // Record a 5-second sample or full clip preview
-      recorder.start();
-      setTimeout(() => {
-        recorder.stop();
-      }, 3500);
-    });
-  },
-
-  exportClipDirectly(clip, project) {
-    // Generates instant downloaded file with project metadata & transcript
-    const cleanTitle = (clip.title || 'Clip').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const content = `OpusFlow AI Export\nTitel: ${clip.title}\nScore: ${clip.score}/100\nFormat: ${clip.aspect_ratio || '9:16'}\nStart: ${clip.start_time}s\nEnde: ${clip.end_time}s\nUntertitel-Stil: ${clip.caption_preset || 'viral'}\n\nTranskript:\n${clip.transcript_json || ''}`;
-    
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+  triggerFileDownload(url, filename) {
     const a = document.createElement('a');
     a.href = url;
-    a.download = `OpusFlow_${cleanTitle}.txt`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 1000);
+    setTimeout(() => document.body.removeChild(a), 1000);
   },
 
   formatTime(seconds) {

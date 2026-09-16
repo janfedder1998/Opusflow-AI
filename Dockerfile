@@ -1,8 +1,11 @@
 FROM ruby:3.2-slim
 
-# System dependencies for pg gem + gem building
+# System dependencies for pg gem, gem building, and real video processing:
+# ffmpeg cuts/crops clips, yt-dlp downloads source YouTube videos, python3-pip
+# installs yt-dlp (not reliably available/current as a Debian package).
 RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends build-essential libpq-dev git && \
+    apt-get install -y --no-install-recommends build-essential libpq-dev git ffmpeg python3-pip && \
+    pip install --break-system-packages --no-cache-dir yt-dlp && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

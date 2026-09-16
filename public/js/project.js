@@ -267,10 +267,20 @@ const ProjectView = {
     const clip = (this.currentProject.clips || []).find(c => c.id === clipId);
     if (!clip) return;
 
-    API.showToast(`Erstelle MP4-Download für "${clip.title}"...`, 'info');
+    API.showToast(`Video wird geschnitten für "${clip.title}"...`, 'info');
 
-    // Trigger video synthesis or download
-    EditorView.exportClipDirectly(clip, this.currentProject);
+    try {
+      const result = await API.exportClip(clipId);
+      const a = document.createElement('a');
+      a.href = result.url;
+      a.download = `OpusFlow_${(clip.title || 'Clip').replace(/[^a-zA-Z0-9_-]/g, '_')}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => document.body.removeChild(a), 1000);
+      API.showToast('Video erfolgreich exportiert!', 'success');
+    } catch (err) {
+      API.showToast('Export fehlgeschlagen: ' + err.message, 'error');
+    }
   },
 
   async downloadAllZip() {
@@ -279,28 +289,40 @@ const ProjectView = {
       return;
     }
 
-    API.showToast('Erstelle ZIP-Archiv für alle Clips...', 'info');
+    API.showToast(`Schneide ${this.currentProject.clips.length} Clips und baue ZIP-Archiv...`, 'info');
 
     const zip = new MiniZip();
 
-    // Add metadata summary
     const summaryText = `OpusFlow AI - Clip Export\nProjekt: ${this.currentProject.title}\nGeneriert am: ${new Date().toLocaleString('de-DE')}\nAnzahl Clips: ${this.currentProject.clips.length}\n\n` +
-      this.currentProject.clips.map((c, i) => 
+      this.currentProject.clips.map((c, i) =>
         `Clip #${i+1}: ${c.title}\nScore: ${c.score}/100\nKategorie: ${c.category}\nZeit: ${this.formatTime(c.start_time)} - ${this.formatTime(c.end_time)}\nTranskript: ${c.transcript_json || ''}\n----------------------------------`
       ).join('\n\n');
 
     zip.addFile("README_Export_Info.txt", summaryText);
 
-    // Add each clip transcript & subtitle track
-    this.currentProject.clips.forEach((c, idx) => {
+    let succeeded = 0;
+    for (let idx = 0; idx < this.currentProject.clips.length; idx++) {
+      const c = this.currentProject.clips[idx];
       const cleanName = c.title.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30);
-      const filename = `Clip_${idx + 1}_Score_${c.score}_${cleanName}.txt`;
-      zip.addFile(filename, `Titel: ${c.title}\nScore: ${c.score}/100\nStart: ${c.start_time}s\nEnde: ${c.end_time}s\nFormat: ${c.aspect_ratio}\nTranskript:\n${c.transcript_json || ''}`);
-    });
+      try {
+        const result = await API.exportClip(c.id);
+        const videoResponse = await fetch(result.url);
+        const videoBytes = new Uint8Array(await videoResponse.arrayBuffer());
+        zip.addFile(`Clip_${idx + 1}_Score_${c.score}_${cleanName}.mp4`, videoBytes);
+        succeeded++;
+      } catch (err) {
+        zip.addFile(`Clip_${idx + 1}_Score_${c.score}_${cleanName}_FEHLER.txt`, `Export fehlgeschlagen: ${err.message}`);
+      }
+    }
 
     const safeTitle = this.currentProject.title.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 25);
     zip.download(`OpusFlow_${safeTitle}_Clips.zip`);
-    API.showToast('ZIP-Archiv erfolgreich heruntergeladen!', 'success');
+
+    if (succeeded === this.currentProject.clips.length) {
+      API.showToast('ZIP-Archiv mit allen echten Clips heruntergeladen!', 'success');
+    } else {
+      API.showToast(`ZIP heruntergeladen: ${succeeded}/${this.currentProject.clips.length} Clips erfolgreich geschnitten`, 'info');
+    }
   },
 
   async reAnalyze(projectId) {

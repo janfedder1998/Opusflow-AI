@@ -71,6 +71,10 @@ const API = {
     return this.request(`/clips/${id}`);
   },
 
+  exportClip(id) {
+    return this.request(`/clips/${id}/export`, { method: 'POST' });
+  },
+
   updateClip(id, data) {
     return this.request(`/clips/${id}`, {
       method: 'PUT',

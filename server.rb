@@ -3,6 +3,8 @@ $stdout.sync = true
 $stderr.sync = true
 
 require 'webrick'
+require 'open3'
+require 'timeout'
 require 'json'
 require 'fileutils'
 require 'securerandom'
@@ -217,7 +219,7 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
 
     when 'credits'
       total = 120
-      used = db.get_first_value("SELECT COALESCE(SUM(MAX(end_time - start_time, 0)), 0) / 60.0 FROM clips").to_f
+      used = db.get_first_value("SELECT COALESCE(SUM(GREATEST(end_time - start_time, 0)), 0) / 60.0 FROM clips").to_f
       remaining = [total - used, 0].max.round(1)
       json_response(res, {
         plan: 'Creator Pro',
@@ -227,7 +229,7 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
 
     when 'billing'
       total_minutes = 120
-      used_minutes = db.get_first_value("SELECT COALESCE(SUM(MAX(end_time - start_time, 0)), 0) / 60.0 FROM clips").to_f
+      used_minutes = db.get_first_value("SELECT COALESCE(SUM(GREATEST(end_time - start_time, 0)), 0) / 60.0 FROM clips").to_f
       remaining_minutes = [total_minutes - used_minutes, 0].max.round(1)
 
       json_response(res, {
@@ -346,11 +348,53 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
       clip = db.get_first_row("SELECT * FROM clips WHERE id = ?", [clip_id])
       return error_response(res, 404, "Clip nicht gefunden") unless clip
 
+      project = db.get_first_row("SELECT * FROM projects WHERE id = ?", [clip['project_id']])
+      source_path = project && !project['file_path'].to_s.empty? ? File.join(UPLOADS_DIR, project['file_path']) : nil
+
+      unless source_path && File.exist?(source_path)
+        return error_response(res, 422, "Kein echtes Quellvideo für diesen Clip vorhanden (Download fehlgeschlagen oder noch nicht abgeschlossen). Bitte Projekt erneut analysieren.")
+      end
+
       export_filename = "opusflow_clip_#{clip_id}.mp4"
+      output_path = File.join(EXPORTS_DIR, export_filename)
+
+      dims = case clip['aspect_ratio']
+             when '1:1' then [1080, 1080]
+             when '16:9' then [1920, 1080]
+             else [1080, 1920] # 9:16 default
+             end
+      w, h = dims
+      duration = clip['end_time'].to_f - clip['start_time'].to_f
+      vf = "scale=#{w}:#{h}:force_original_aspect_ratio=increase,crop=#{w}:#{h}"
+
+      cmd = [
+        'ffmpeg', '-y',
+        '-ss', clip['start_time'].to_s,
+        '-i', source_path,
+        '-t', duration.to_s,
+        '-vf', vf,
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-c:a', 'aac', '-movflags', '+faststart',
+        output_path
+      ]
+
+      _out, err, status = nil, nil, nil
+      begin
+        Timeout.timeout(120) { _out, err, status = Open3.capture3(*cmd) }
+      rescue Timeout::Error
+        return error_response(res, 500, "Export hat zu lange gedauert (Timeout)")
+      end
+
+      unless status && status.success?
+        warn "[EXPORT] ffmpeg failed for #{clip_id}: #{err.to_s[0, 500]}"
+        return error_response(res, 500, "Videoschnitt fehlgeschlagen")
+      end
+
       json_response(res, {
         success: true,
         filename: export_filename,
-        message: "Clip für Download bereit"
+        url: "/exports/#{export_filename}",
+        message: "Clip erfolgreich geschnitten und exportiert"
       })
 
     when 'schedule'
@@ -470,6 +514,42 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
 
   private
 
+  # Downloads the actual source video with yt-dlp (works for YouTube and many
+  # other sites) into UPLOADS_DIR so the rest of the app can treat it exactly
+  # like an uploaded file. Returns the saved filename, or nil if nothing could
+  # be downloaded (e.g. an unsupported/demo URL) - callers treat that as
+  # non-fatal and fall back to the synthetic preview.
+  def download_source_video(proj_id, source_url)
+    return nil if source_url.to_s.strip.empty?
+
+    out_template = File.join(UPLOADS_DIR, "#{proj_id}.%(ext)s")
+    cmd = [
+      'yt-dlp',
+      '--no-playlist',
+      '--max-filesize', '500M',
+      '--socket-timeout', '30',
+      '-f', 'mp4/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+      '--merge-output-format', 'mp4',
+      '-o', out_template,
+      source_url
+    ]
+
+    stdout_str, stderr_str, status = nil, nil, nil
+    Timeout.timeout(180) do
+      stdout_str, stderr_str, status = Open3.capture3(*cmd)
+    end
+
+    unless status.success?
+      warn "[DOWNLOAD] yt-dlp failed for #{proj_id}: #{stderr_str.to_s[0, 500]}"
+      return nil
+    end
+
+    downloaded = Dir.glob(File.join(UPLOADS_DIR, "#{proj_id}.*")).first
+    return nil unless downloaded
+
+    File.basename(downloaded)
+  end
+
   def run_analysis_pipeline(proj_id, options)
     puts "[PIPELINE] run_analysis_pipeline entered for #{proj_id}"
     db = OpusFlow::Database.instance.db
@@ -493,6 +573,28 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
 
     db.execute("UPDATE projects SET status = 'analyzing', progress = 5, current_step = 'Analyse gestartet' WHERE id = ?", [proj_id])
     puts "[PIPELINE] Initial status update done for #{proj_id}"
+
+    project = db.get_first_row("SELECT * FROM projects WHERE id = ?", [proj_id])
+
+    # Real video download: for YouTube/URL-sourced projects with no local file
+    # yet, actually fetch the source video with yt-dlp so playback and export
+    # work on the real footage instead of a synthetic placeholder animation.
+    if project['file_path'].to_s.empty? && ['youtube', 'url', 'vimeo', 'web'].include?(project['source_type'])
+      db.execute("UPDATE projects SET progress = 10, current_step = 'Video wird heruntergeladen...' WHERE id = ?", [proj_id])
+      begin
+        downloaded_name = download_source_video(proj_id, project['source_url'])
+        if downloaded_name
+          db.execute("UPDATE projects SET file_path = ? WHERE id = ?", [downloaded_name, proj_id])
+          project = db.get_first_row("SELECT * FROM projects WHERE id = ?", [proj_id])
+          puts "[PIPELINE] Downloaded source video for #{proj_id} -> #{downloaded_name}"
+        else
+          puts "[PIPELINE] No video downloaded for #{proj_id}, continuing with synthetic preview"
+        end
+      rescue => dl_err
+        warn "[PIPELINE] Video download failed for #{proj_id}: #{dl_err.message}"
+        # Non-fatal: analysis continues; editor falls back to the synthetic preview.
+      end
+    end
 
     steps.each do |st|
       sleep(st[:delay])
