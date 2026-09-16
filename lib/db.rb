@@ -35,6 +35,8 @@ module OpusFlow
       conn = SQLite3::Database.new(DB_PATH)
       conn.results_as_hash = true
       conn.busy_timeout = 5000
+      conn.journal_mode = "WAL"
+      conn.synchronous = "NORMAL"
       Thread.current[:opusflow_db_connection] = conn
       conn
     end
