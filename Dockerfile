@@ -1,8 +1,8 @@
 FROM ruby:3.2-slim
 
-# System dependencies for sqlite3 gem + gem building
+# System dependencies for pg gem + gem building
 RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends build-essential libsqlite3-dev git && \
+    apt-get install -y --no-install-recommends build-essential libpq-dev git && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
