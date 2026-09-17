@@ -552,7 +552,7 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
       '--socket-timeout', '30',
       '--js-runtimes', 'node',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      '--extractor-args', 'youtube:player_client=android,web;player_skip=webpage,configs',
+      '--extractor-args', 'youtube:player_client=ios,tv_embedded,mweb;player_skip=webpage,configs',
       '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4/bestvideo+bestaudio/best',
       '--merge-output-format', 'mp4'
     ]

@@ -582,8 +582,8 @@ const EditorView = {
       if (ytMatch) {
         if (this.isPlaying) this.togglePlay();
         const startSec = Math.floor(this.state.startTime);
-        const endSec = Math.floor(this.state.endTime);
-        iframe.src = `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?start=${startSec}&end=${endSec}&autoplay=1`;
+        const endSec = Math.max(startSec + 1, Math.floor(this.state.endTime));
+        iframe.src = `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?start=${startSec}&end=${endSec}&loop=1&playlist=${ytMatch[1]}&autoplay=1&rel=0&modestbranding=1`;
         iframe.classList.remove('hidden');
         canvas.classList.add('hidden');
         if (toggleBtnText) toggleBtnText.innerText = '🎨 Zurück zur Canvas-Vorschau';
