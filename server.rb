@@ -351,8 +351,18 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
       project = db.get_first_row("SELECT * FROM projects WHERE id = ?", [clip['project_id']])
       source_path = project && !project['file_path'].to_s.empty? ? File.join(UPLOADS_DIR, project['file_path']) : nil
 
+      # On-demand retry if video was not downloaded during initial pipeline
+      if (!source_path || !File.exist?(source_path)) && project && !project['source_url'].to_s.empty?
+        puts "[EXPORT] Source video not on disk for clip #{clip_id}, attempting on-demand download..."
+        downloaded = download_source_video(project['id'], project['source_url'])
+        if downloaded
+          db.execute("UPDATE projects SET file_path = ? WHERE id = ?", [downloaded, project['id']])
+          source_path = File.join(UPLOADS_DIR, downloaded)
+        end
+      end
+
       unless source_path && File.exist?(source_path)
-        return error_response(res, 422, "Kein echtes Quellvideo für diesen Clip vorhanden (Download fehlgeschlagen oder noch nicht abgeschlossen). Bitte Projekt erneut analysieren.")
+        return error_response(res, 422, "Kein Quellvideo auf dem Server vorhanden (YouTube-Download blockiert oder noch nicht abgeschlossen). Tipp: Lade das Video direkt per Drag & Drop als MP4 hoch oder hinterlege YouTube-Cookies.")
       end
 
       export_filename = "opusflow_clip_#{clip_id}.mp4"
@@ -523,29 +533,68 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
     return nil if source_url.to_s.strip.empty?
 
     out_template = File.join(UPLOADS_DIR, "#{proj_id}.%(ext)s")
+    
+    # Check for cookies (from env var or file) to bypass YouTube bot/429 blocks
+    cookie_path = nil
+    if ENV['YTDLP_COOKIES'] && !ENV['YTDLP_COOKIES'].to_s.strip.empty?
+      cookie_path = File.join(STORAGE_ROOT, 'yt_cookies.txt')
+      File.write(cookie_path, ENV['YTDLP_COOKIES'])
+    elsif File.exist?(File.join(STORAGE_ROOT, 'cookies.txt'))
+      cookie_path = File.join(STORAGE_ROOT, 'cookies.txt')
+    elsif File.exist?('cookies.txt')
+      cookie_path = 'cookies.txt'
+    end
+
     cmd = [
       'yt-dlp',
       '--no-playlist',
       '--max-filesize', '500M',
       '--socket-timeout', '30',
-      '-f', 'mp4/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
-      '--merge-output-format', 'mp4',
-      '-o', out_template,
-      source_url
+      '--js-runtimes', 'node',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      '--extractor-args', 'youtube:player_client=android,web;player_skip=webpage,configs',
+      '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4/bestvideo+bestaudio/best',
+      '--merge-output-format', 'mp4'
     ]
+
+    cmd += ['--cookies', cookie_path] if cookie_path
+    cmd += ['-o', out_template, source_url]
 
     stdout_str, stderr_str, status = nil, nil, nil
     Timeout.timeout(180) do
       stdout_str, stderr_str, status = Open3.capture3(*cmd)
     end
 
-    unless status.success?
-      warn "[DOWNLOAD] yt-dlp failed for #{proj_id}: #{stderr_str.to_s[0, 500]}"
-      return nil
+    unless status && status.success?
+      warn "[DOWNLOAD] yt-dlp primary attempt failed for #{proj_id}: #{stderr_str.to_s[0, 500]}"
+      
+      # Secondary attempt with generic fallback if android client had issues
+      fallback_cmd = [
+        'yt-dlp',
+        '--no-playlist',
+        '--max-filesize', '500M',
+        '--socket-timeout', '30',
+        '--js-runtimes', 'node',
+        '-f', 'best',
+        '--merge-output-format', 'mp4'
+      ]
+      fallback_cmd += ['--cookies', cookie_path] if cookie_path
+      fallback_cmd += ['-o', out_template, source_url]
+
+      begin
+        Timeout.timeout(120) do
+          stdout_str, stderr_str, status = Open3.capture3(*fallback_cmd)
+        end
+      rescue => fb_err
+        warn "[DOWNLOAD] yt-dlp fallback timeout/error: #{fb_err.message}"
+      end
     end
 
     downloaded = Dir.glob(File.join(UPLOADS_DIR, "#{proj_id}.*")).first
-    return nil unless downloaded
+    unless downloaded
+      warn "[DOWNLOAD] yt-dlp finished but no file found for #{proj_id}"
+      return nil
+    end
 
     File.basename(downloaded)
   end

@@ -53,6 +53,10 @@ const EditorView = {
       this.historyIndex = -1;
       this.pushHistory();
 
+      const hasLocalVideo = !!(this.currentProject.file_path || (window.localVideoBlobs && window.localVideoBlobs[this.currentProject.id]));
+      const ytMatch = (this.currentProject.source_url || '').match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+      const ytId = ytMatch ? ytMatch[1] : null;
+
       return `
         <div class="max-w-7xl mx-auto pb-12">
           
@@ -132,8 +136,20 @@ const EditorView = {
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             
             <!-- Left Side: Video Canvas Player & Timeline (Cols 7) -->
-            <div class="lg:col-span-7 flex flex-col items-center">
+            <div class="lg:col-span-7 flex flex-col items-center w-full">
               
+              ${!hasLocalVideo && ytId ? `
+                <div class="w-full max-w-xl mb-3 px-3.5 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-between gap-2 text-xs text-purple-200">
+                  <div class="flex items-center gap-2">
+                    <span class="text-base">🎬</span>
+                    <span><strong>YouTube-Vorschau:</strong> Video direkt im Original-Player abspielen</span>
+                  </div>
+                  <button type="button" onclick="EditorView.toggleYouTubePlayer()" class="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold transition-all shadow-sm">
+                    <span id="yt-toggle-text">▶️ Im YouTube-Player abspielen</span>
+                  </button>
+                </div>
+              ` : ''}
+
               <!-- Video Preview Frame with Aspect Ratio Container -->
               <div id="aspect-frame" class="aspect-container-${this.state.aspectRatio.replace(':', '-')} video-canvas-wrapper relative flex items-center justify-center transition-all duration-300">
                 
@@ -148,6 +164,17 @@ const EditorView = {
 
                 <!-- Rendering HTML5 Canvas -->
                 <canvas id="preview-canvas" class="w-full h-full object-contain cursor-pointer" onclick="EditorView.togglePlay()"></canvas>
+
+                ${ytId ? `
+                  <iframe 
+                    id="yt-embed-player" 
+                    class="w-full h-full rounded-xl hidden" 
+                    src="" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen>
+                  </iframe>
+                ` : ''}
 
                 <!-- Big Play / Pause Overlay Icon -->
                 <div id="play-pause-icon" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity">
@@ -542,6 +569,31 @@ const EditorView = {
       this.currentTime = video.currentTime;
       this.updatePlaybackTimeUI();
     });
+  },
+
+  toggleYouTubePlayer() {
+    const iframe = document.getElementById('yt-embed-player');
+    const canvas = document.getElementById('preview-canvas');
+    const toggleBtnText = document.getElementById('yt-toggle-text');
+    if (!iframe || !canvas) return;
+
+    if (iframe.classList.contains('hidden')) {
+      const ytMatch = (this.currentProject.source_url || '').match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+      if (ytMatch) {
+        if (this.isPlaying) this.togglePlay();
+        const startSec = Math.floor(this.state.startTime);
+        const endSec = Math.floor(this.state.endTime);
+        iframe.src = `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?start=${startSec}&end=${endSec}&autoplay=1`;
+        iframe.classList.remove('hidden');
+        canvas.classList.add('hidden');
+        if (toggleBtnText) toggleBtnText.innerText = '🎨 Zurück zur Canvas-Vorschau';
+      }
+    } else {
+      iframe.src = '';
+      iframe.classList.add('hidden');
+      canvas.classList.remove('hidden');
+      if (toggleBtnText) toggleBtnText.innerText = '▶️ Im YouTube-Player abspielen';
+    }
   },
 
   startRenderingLoop() {
