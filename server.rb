@@ -539,6 +539,9 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
     if ENV['YTDLP_COOKIES'] && !ENV['YTDLP_COOKIES'].to_s.strip.empty?
       cookie_path = File.join(STORAGE_ROOT, 'yt_cookies.txt')
       File.write(cookie_path, ENV['YTDLP_COOKIES'])
+    elsif File.exist?('/etc/secrets/yt_cookies.txt')
+  cookie_path = '/etc/secrets/yt_cookies.txt'
+  puts "[DOWNLOAD] Using Render secret cookie file"
     elsif File.exist?(File.join(STORAGE_ROOT, 'cookies.txt'))
       cookie_path = File.join(STORAGE_ROOT, 'cookies.txt')
     elsif File.exist?('cookies.txt')
