@@ -648,6 +648,32 @@ class ApiServlet < WEBrick::HTTPServlet::AbstractServlet
       end
     end
 
+    # A real source file is mandatory for real highlight detection.
+    source_path = project['file_path'].to_s.empty? ? nil : File.join(UPLOADS_DIR, project['file_path'])
+    unless source_path && File.exist?(source_path)
+      raise "Kein echtes Quellvideo verfügbar. Bitte Video als MP4/MOV/WebM hochladen oder den Video-Import erneut versuchen."
+    end
+
+    # Read the real media duration instead of trusting the placeholder duration
+    # supplied by the browser/import metadata.
+    probe_out, _probe_err, probe_status = Open3.capture3(
+      'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1', source_path
+    )
+    if probe_status.success? && probe_out.to_f > 0
+      db.execute("UPDATE projects SET duration = ? WHERE id = ?", [probe_out.to_f.round(2), proj_id])
+      project = db.get_first_row("SELECT * FROM projects WHERE id = ?", [proj_id])
+    end
+
+    # Transcribe the actual source video. The transcript contains timestamps so
+    # highlight start/end positions refer to moments that really exist in the video.
+    db.execute("UPDATE projects SET progress = 38, current_step = 'Echtes Audio wird transkribiert...' WHERE id = ?", [proj_id])
+    transcript = OpusFlow::AiService.transcribe_video(source_path)
+    if transcript.to_s.strip.empty?
+      raise "Transkript konnte nicht erstellt werden. Bitte in Einstellungen einen OpenAI API-Key hinterlegen."
+    end
+    options = options.merge(transcript: transcript)
+
     steps.each do |st|
       sleep(st[:delay])
       db.execute("UPDATE projects SET progress = ?, current_step = ? WHERE id = ?", [st[:progress], st[:step], proj_id])
