@@ -5,7 +5,7 @@ FROM ruby:3.2-slim
 # installs yt-dlp (not reliably available/current as a Debian package).
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends build-essential libpq-dev git ffmpeg python3-pip nodejs && \
-    pip install --break-system-packages --no-cache-dir yt-dlp && \
+    pip install --break-system-packages --no-cache-dir "yt-dlp[default]" && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
