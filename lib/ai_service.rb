@@ -2,6 +2,8 @@
 require 'net/http'
 require 'uri'
 require 'json'
+require 'open3'
+require 'securerandom'
 require_relative 'db'
 
 module OpusFlow
@@ -28,6 +30,52 @@ module OpusFlow
 
       # High-performance built-in Semantic & NLP Highlight Engine
       analyze_with_nlp_engine(project, transcript, clip_count, min_dur, max_dur)
+    end
+
+    # Transcribe the real uploaded/downloaded video with timestamped segments.
+    # We extract mono MP3 first to keep the transcription upload small.
+    def self.transcribe_video(video_path)
+      api_key = get_setting('openai_api_key')
+      return nil if api_key.to_s.strip.empty?
+
+      audio_path = "#{video_path}.transcribe.mp3"
+      _out, err, status = Open3.capture3(
+        'ffmpeg', '-y', '-i', video_path, '-vn', '-ac', '1', '-ar', '16000',
+        '-b:a', '48k', audio_path
+      )
+      raise "Audio-Extraktion fehlgeschlagen: #{err.to_s[-300, 300]}" unless status.success? && File.exist?(audio_path)
+
+      boundary = "----OpusFlow#{SecureRandom.hex(12)}"
+      parts = []
+      add_field = lambda do |name, value|
+        parts << "--#{boundary}\r\nContent-Disposition: form-data; name=\"#{name}\"\r\n\r\n#{value}\r\n"
+      end
+      add_field.call('model', 'whisper-1')
+      add_field.call('response_format', 'verbose_json')
+      add_field.call('timestamp_granularities[]', 'segment')
+      parts << "--#{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.mp3\"\r\nContent-Type: audio/mpeg\r\n\r\n"
+      body = parts.join.b + File.binread(audio_path) + "\r\n--#{boundary}--\r\n"
+
+      uri = URI('https://api.openai.com/v1/audio/transcriptions')
+      req = Net::HTTP::Post.new(uri)
+      req['Authorization'] = "Bearer #{api_key}"
+      req['Content-Type'] = "multipart/form-data; boundary=#{boundary}"
+      req.body = body
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      http.read_timeout = 300
+      res = http.request(req)
+      raise "Transkriptions-API Fehler #{res.code}: #{res.body.to_s[0, 300]}" unless res.is_a?(Net::HTTPSuccess)
+
+      data = JSON.parse(res.body)
+      segments = data['segments'] || []
+      if segments.any?
+        segments.map { |s| "[#{format('%.2f', s['start'].to_f)}-#{format('%.2f', s['end'].to_f)}] #{s['text'].to_s.strip}" }.join("\n")
+      else
+        data['text'].to_s
+      end
+    ensure
+      File.delete(audio_path) if audio_path && File.exist?(audio_path)
     end
 
     def self.generate_subtitles_for_clip(clip_text, start_time, end_time)
